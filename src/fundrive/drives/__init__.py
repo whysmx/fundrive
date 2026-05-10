@@ -8,113 +8,113 @@ FunDrive 统一云存储驱动模块
 # 🌟 全球主流服务 - 最受欢迎的云存储服务
 try:
     from .google import GoogleDrive
-except ImportError:
+except Exception:
     GoogleDrive = None
 
 try:
     from .onedrive import OneDrive
-except ImportError:
+except Exception:
     OneDrive = None
 
 try:
     from .dropbox import DropboxDrive
-except ImportError:
+except Exception:
     DropboxDrive = None
 
 try:
     from .amazon import S3Drive
-except ImportError:
+except Exception:
     S3Drive = None
 
 # 💻 代码托管平台 - 开发者常用
 try:
     from .github import GitHubDrive
-except ImportError:
+except Exception:
     GitHubDrive = None
 
 try:
     from .gitee import GiteeDrive
-except ImportError:
+except Exception:
     GiteeDrive = None
 
 # 🇨🇳 国内主流服务 - 国内用户首选
 try:
     from .baidu import BaiDuDrive
-except ImportError:
+except Exception:
     BaiDuDrive = None
 
 try:
     from .alipan import AliPanDrive, AliPanOpenDrive
-except ImportError:
+except Exception:
     AliPanDrive = None
     AliPanOpenDrive = None
 
 try:
     from .pan115 import Pan115Drive
-except ImportError:
+except Exception:
     Pan115Drive = None
 
 try:
     from .oss import OssDrive
-except ImportError:
+except Exception:
     OssDrive = None
 
 try:
     from .ossutil import OSSUtilDrive
-except ImportError:
+except Exception:
     OSSUtilDrive = None
 
 # 🔧 通用协议和工具 - 兼容性强
 try:
     from .webdav import WebDAVDrive
-except ImportError:
+except Exception:
     WebDAVDrive = None
 
 try:
     from .pcloud import PCloudDrive
-except ImportError:
+except Exception:
     PCloudDrive = None
 
 try:
     from .mediafire import MediaFireDrive
-except ImportError:
+except Exception:
     MediaFireDrive = None
 
 try:
     from .lanzou import LanzouDrive
-except ImportError:
+except Exception:
     LanzouDrive = None
 
 try:
     from .os import OSDrive, LocalDrive
-except ImportError:
+except Exception:
     OSDrive = None
     LocalDrive = None
 
 # 🔬 学术和专业服务 - 特定用途
 try:
     from .zenodo import ZenodoDrive
-except ImportError:
+except Exception:
     ZenodoDrive = None
 
 try:
     from .tsinghua import TSingHuaDrive
-except ImportError:
+except Exception:
     TSingHuaDrive = None
 
 try:
     from .openxlab import OpenXLabDrive
-except ImportError:
+except Exception:
     OpenXLabDrive = None
 
 try:
     from .tianchi import TianChiDrive
-except ImportError:
+except Exception:
     TianChiDrive = None
 
 try:
     from .wenshushu import WSSDrive
-except ImportError:
+except Exception:
     WSSDrive = None
 
 # 驱动注册表 - 按流行度排序

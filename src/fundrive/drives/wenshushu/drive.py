@@ -161,7 +161,6 @@ class WSSDrive(BaseDrive):
             }
 
             log_storage_info(
-                logger,
                 f"{storage_info['used_space_gb']}GB",
                 f"{storage_info['free_space_gb']}GB",
                 f"{storage_info['total_space_gb']}GB",

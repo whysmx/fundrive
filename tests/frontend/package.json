@@ -1,0 +1,12 @@
+{
+  "name": "wenshushu-frontend-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test -c playwright.config.ts",
+    "test:headed": "playwright test -c playwright.config.ts --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0"
+  }
+}

@@ -24,11 +24,16 @@
 
 import argparse
 import os
+import sys
 import tempfile
 
 
 from fundrive.drives.wenshushu import WSSDrive
 from fundrive.utils.file import print_files
+
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 
 def print_separator(title: str = ""):

@@ -11,3 +11,14 @@ dist
 .venv
 logs
 uv.lock
+.idea/
+fundrive.zip
+web/data/*.db
+web/data/*.db-*
+web/data/downloads/
+web/temp/
+temp/
+tmp/
+node_modules/
+playwright-report/
+test-results/
