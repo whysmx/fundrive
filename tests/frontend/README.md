@@ -5,11 +5,11 @@
 ## 覆盖范围
 
 - `/api/status`: 页面状态展示
-- `/api/storage`: 空间信息展示
 - `/api/files`: 上传记录和分享链接展示
 - `/api/upload`: 选择文件后上传并追加记录
-- `/api/download`: 输入分享链接后触发下载
-- `/api/search`: 按关键词搜索并复制分享链接
+- `/api/search`: 按关键词搜索上传记录
+- `/api/ip-users`: 配置 IP 对应用户，并维护用户下拉筛选
+- `/api/files/{id}/remark`: 保存上传记录备注
 
 测试默认 mock 后端 API，所以只需要本地 Web 页面能打开即可。
 
@@ -20,17 +20,15 @@
 | 区域/控件 | data-testid |
 | --- | --- |
 | 状态标签 | `status-badge` |
-| 空间信息区域 | `storage-panel` |
 | 文件上传 input | `upload-input` |
 | 上传按钮 | `upload-button` |
-| 下载链接输入框 | `download-url-input` |
-| 下载按钮 | `download-button` |
-| 下载结果区域 | `download-result` |
 | 上传记录/文件列表 | `file-list` 或 `upload-records` |
+| 用户筛选 | `user-filter` |
+| IP 用户映射列表 | `mapping-list` |
 | 搜索输入框 | `search-input` |
 | 搜索按钮 | `search-button` |
 | 搜索结果区域 | `search-results` |
-| 复制链接按钮 | `copy-link-button` |
+| 复制下载命令按钮 | `copy-command-button` |
 
 测试也保留了中文按钮、label、placeholder 的兜底定位，但 `data-testid` 更稳定。
 

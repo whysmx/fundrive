@@ -1,26 +1,33 @@
 const state = {
   files: [],
   toastTimer: null,
+  uploadProgressTimer: null,
 };
 
 const els = {
   statusPill: document.querySelector("#status-pill"),
   statusText: document.querySelector("#status-text"),
-  usedSpace: document.querySelector("#used-space"),
-  freeSpace: document.querySelector("#free-space"),
-  totalSpace: document.querySelector("#total-space"),
   uploadForm: document.querySelector("#upload-form"),
+  dropZone: document.querySelector("#drop-zone"),
   fileInput: document.querySelector("#file-input"),
   fileLabel: document.querySelector("#file-label"),
+  dropHint: document.querySelector("#drop-hint"),
   uploadName: document.querySelector("#upload-name"),
+  uploadRemark: document.querySelector("#upload-remark"),
+  autoRenew: document.querySelector("#auto-renew"),
+  uploadProgress: document.querySelector("#upload-progress"),
+  uploadProgressText: document.querySelector("#upload-progress-text"),
+  uploadProgressValue: document.querySelector("#upload-progress-value"),
+  uploadProgressBar: document.querySelector("#upload-progress-bar"),
+  uploadProgressActions: document.querySelector("#upload-progress-actions"),
   uploadButton: document.querySelector("#upload-button"),
-  downloadForm: document.querySelector("#download-form"),
-  shareUrl: document.querySelector("#share-url"),
-  downloadName: document.querySelector("#download-name"),
-  overwrite: document.querySelector("#overwrite"),
-  downloadButton: document.querySelector("#download-button"),
-  downloadResultText: document.querySelector("#download-result-text"),
   refreshButton: document.querySelector("#refresh-button"),
+  refreshNowButton: document.querySelector("#refresh-now-button"),
+  mappingForm: document.querySelector("#mapping-form"),
+  mappingIp: document.querySelector("#mapping-ip"),
+  mappingUser: document.querySelector("#mapping-user"),
+  mappingList: document.querySelector("#mapping-list"),
+  userFilter: document.querySelector("#user-filter"),
   searchInput: document.querySelector("#search-input"),
   searchButton: document.querySelector("#search-button"),
   filesBody: document.querySelector("#files-body"),
@@ -64,40 +71,179 @@ async function requestJson(url, options = {}) {
   return payload;
 }
 
-function renderStorage(storage) {
-  els.usedSpace.textContent = `${storage.used_space_gb ?? "--"} GB`;
-  els.freeSpace.textContent = `${storage.free_space_gb ?? "--"} GB`;
-  els.totalSpace.textContent = `${storage.total_space_gb ?? "--"} GB`;
+function setUploadProgress(percent, text) {
+  const safePercent = Math.max(0, Math.min(100, Math.round(percent || 0)));
+  els.uploadProgress.hidden = false;
+  els.uploadProgressBar.style.width = `${safePercent}%`;
+  els.uploadProgressValue.textContent = `${safePercent}%`;
+  els.uploadProgressText.textContent = text;
+}
+
+function stopUploadProgressTimer() {
+  if (state.uploadProgressTimer) {
+    window.clearInterval(state.uploadProgressTimer);
+    state.uploadProgressTimer = null;
+  }
+}
+
+function startRemoteUploadProgress() {
+  stopUploadProgressTimer();
+  let current = 80;
+  setUploadProgress(current, "正在上传到文叔叔");
+  state.uploadProgressTimer = window.setInterval(() => {
+    if (current < 90) {
+      current += 1;
+    } else if (current < 96) {
+      current += 0.25;
+    }
+    setUploadProgress(current, "正在上传到文叔叔");
+  }, 900);
+}
+
+function resetUploadProgress() {
+  stopUploadProgressTimer();
+  els.uploadProgress.hidden = true;
+  els.uploadProgressBar.style.width = "0%";
+  els.uploadProgressValue.textContent = "0%";
+  els.uploadProgressText.textContent = "准备上传";
+  els.uploadProgressActions.hidden = true;
+}
+
+function getSelectedFile() {
+  return els.fileInput.files[0] || null;
+}
+
+function syncSelectedFile(file) {
+  els.fileLabel.textContent = file ? file.name : "选择文件";
+  els.dropHint.textContent = file
+    ? "拖拽或点击可重新选择文件。"
+    : "支持单文件上传，也可以直接拖到这里。";
+  if (file && !els.uploadName.value.trim()) {
+    els.uploadName.value = file.name;
+  }
+}
+
+function forceRefreshPage() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("_r", String(Date.now()));
+  window.location.replace(url.toString());
+}
+
+function uploadWithProgress(url, formData) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable) return;
+      const percent = Math.min(78, 5 + (event.loaded / event.total) * 73);
+      setUploadProgress(percent, "正在上传到本地服务");
+      if (event.loaded >= event.total) {
+        startRemoteUploadProgress();
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      stopUploadProgressTimer();
+      let payload = {};
+      try {
+        payload = JSON.parse(xhr.responseText || "{}");
+      } catch {
+        payload = {};
+      }
+      if (xhr.status < 200 || xhr.status >= 300 || payload.ok === false) {
+        reject(new Error(payload.detail || payload.message || `请求失败: ${xhr.status}`));
+        return;
+      }
+      resolve(payload);
+    });
+
+    xhr.addEventListener("error", () => {
+      stopUploadProgressTimer();
+      reject(new Error("上传请求失败"));
+    });
+    xhr.addEventListener("abort", () => {
+      stopUploadProgressTimer();
+      reject(new Error("上传已取消"));
+    });
+    xhr.send(formData);
+  });
 }
 
 function renderFiles(files) {
   state.files = files;
   if (!files.length) {
-    els.filesBody.innerHTML = '<tr><td colspan="5" class="empty-cell">暂无记录</td></tr>';
+    els.filesBody.innerHTML = '<tr><td colspan="9" class="empty-cell">暂无记录</td></tr>';
     return;
   }
 
   els.filesBody.innerHTML = files
     .map((file) => {
+      const fileId = file.id || file.fid || "";
       const shareUrl = file.share_url || "";
       const link = shareUrl
-        ? `<a class="url-text" href="${shareUrl}" target="_blank" rel="noreferrer">${shareUrl}</a>`
+        ? `<a class="url-text" href="${escapeHtml(shareUrl)}" target="_blank" rel="noreferrer">${escapeHtml(shareUrl)}</a>`
         : '<span class="url-text">未返回链接</span>';
+      const renewToggle = file.can_auto_renew
+        ? `<label class="table-check-row"><input type="checkbox" data-renew-id="${escapeHtml(fileId)}" ${file.auto_renew ? "checked" : ""}><span>${file.auto_renew ? "已开启" : "未开启"}</span></label>`
+        : '<span class="muted-text">需重新上传</span>';
       return `
         <tr>
           <td>${escapeHtml(file.name || "-")}</td>
           <td>${formatSize(file.size)}</td>
+          <td>${escapeHtml(file.user || "-")}</td>
+          <td>${escapeHtml(file.uploader_ip || "-")}</td>
           <td>${escapeHtml(file.upload_time || "-")}</td>
+          <td>
+            <input class="remark-input" type="text" data-remark-id="${escapeHtml(fileId)}" value="${escapeHtml(file.remark || "")}" placeholder="添加备注">
+          </td>
+          <td>${renewToggle}</td>
           <td>${link}</td>
           <td>
-            <button class="link-button" type="button" data-testid="copy-link-button" data-copy="${escapeHtml(shareUrl)}" ${shareUrl ? "" : "disabled"}>
-              复制链接
+            <button class="link-button" type="button" data-testid="copy-command-button" data-command-id="${escapeHtml(fileId)}" ${shareUrl && fileId ? "" : "disabled"}>
+              复制下载命令
+            </button>
+            <button class="link-button danger-button" type="button" data-delete-id="${escapeHtml(fileId)}" ${fileId ? "" : "disabled"}>
+              删除记录
             </button>
           </td>
         </tr>
       `;
     })
     .join("");
+}
+
+function renderUsers(users = []) {
+  const selected = els.userFilter.value;
+  const uniqueUsers = Array.from(new Set(users.filter(Boolean))).sort();
+  els.userFilter.innerHTML =
+    '<option value="">全部用户</option>' +
+    uniqueUsers.map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("");
+  if (uniqueUsers.includes(selected)) {
+    els.userFilter.value = selected;
+  }
+}
+
+function renderMappings(mappings = []) {
+  if (!mappings.length) {
+    els.mappingList.innerHTML = '<span class="muted-text">未配置 IP 对应用户</span>';
+    return;
+  }
+
+  els.mappingList.innerHTML = mappings
+    .map((item) => `
+      <span class="mapping-chip">
+        <span>${escapeHtml(item.ip)} = ${escapeHtml(item.user)}</span>
+        <button type="button" data-delete-mapping="${escapeHtml(item.ip)}" aria-label="删除 ${escapeHtml(item.ip)}">×</button>
+      </span>
+    `)
+    .join("");
+}
+
+async function refreshMappings() {
+  const payload = await requestJson("/api/ip-users");
+  renderMappings(payload.mappings || []);
+  renderUsers(payload.users || []);
 }
 
 function escapeHtml(value) {
@@ -107,6 +253,35 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+async function copyText(value) {
+  if (!value) return false;
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Fallback below for embedded browsers without clipboard permission.
+    }
+  }
+
+  const input = document.createElement("textarea");
+  input.value = value;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.top = "-1000px";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  input.setSelectionRange(0, input.value.length);
+
+  try {
+    return document.execCommand("copy");
+  } finally {
+    document.body.removeChild(input);
+  }
 }
 
 async function refreshStatus() {
@@ -119,33 +294,28 @@ async function refreshStatus() {
   }
 }
 
-async function refreshStorage() {
-  const payload = await requestJson("/api/storage");
-  renderStorage(payload.storage || payload || {});
-}
-
 async function refreshFiles(keyword = "") {
-  const endpoint = keyword ? `/api/search?keyword=${encodeURIComponent(keyword)}` : "/api/files";
+  const params = new URLSearchParams();
+  if (keyword) params.set("keyword", keyword);
+  if (els.userFilter.value) params.set("user", els.userFilter.value);
+  const query = params.toString();
+  const endpoint = keyword ? `/api/search${query ? `?${query}` : ""}` : `/api/files${query ? `?${query}` : ""}`;
   const payload = await requestJson(endpoint);
   renderFiles(payload.files || []);
+  renderUsers(payload.users || []);
 }
 
 async function refreshAll() {
   await refreshStatus();
-  await Promise.all([refreshStorage(), refreshFiles(els.searchInput.value.trim())]);
+  await Promise.all([refreshMappings(), refreshFiles(els.searchInput.value.trim())]);
 }
 
 els.fileInput.addEventListener("change", () => {
-  const file = els.fileInput.files[0];
-  els.fileLabel.textContent = file ? file.name : "选择文件";
-  if (file && !els.uploadName.value.trim()) {
-    els.uploadName.value = file.name;
-  }
+  syncSelectedFile(getSelectedFile());
 });
 
-els.uploadForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const file = els.fileInput.files[0];
+async function submitUpload() {
+  const file = getSelectedFile();
   if (!file) {
     showToast("请选择要上传的文件");
     return;
@@ -154,55 +324,111 @@ els.uploadForm.addEventListener("submit", async (event) => {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("filename", els.uploadName.value.trim() || file.name);
+  formData.append("remark", els.uploadRemark.value.trim());
+  formData.append("auto_renew", els.autoRenew.checked ? "true" : "false");
 
   els.uploadButton.disabled = true;
   els.uploadButton.textContent = "上传中";
+  setUploadProgress(0, "正在上传到本地服务");
   try {
-    const payload = await requestJson("/api/upload", {
-      method: "POST",
-      body: formData,
-    });
+    const payload = await uploadWithProgress("/api/upload", formData);
+    setUploadProgress(100, "分享链接已生成");
+    els.uploadProgressActions.hidden = false;
     showToast(`上传完成: ${payload.file.name}`);
     els.uploadForm.reset();
-    els.fileLabel.textContent = "选择文件";
-    await Promise.all([refreshStorage(), refreshFiles()]);
+    syncSelectedFile(null);
+    window.setTimeout(() => {
+      forceRefreshPage();
+    }, 1200);
   } catch (error) {
     showToast(error.message);
   } finally {
     els.uploadButton.disabled = false;
     els.uploadButton.textContent = "开始上传";
+    window.setTimeout(resetUploadProgress, 1200);
   }
+}
+
+els.uploadForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await submitUpload();
 });
 
-els.downloadForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  els.downloadButton.disabled = true;
-  els.downloadButton.textContent = "下载中";
-  try {
-    const payload = await requestJson("/api/download", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        share_url: els.shareUrl.value.trim(),
-        filename: els.downloadName.value.trim() || null,
-        overwrite: els.overwrite.checked,
-      }),
-    });
-    const names = (payload.files || []).map((file) => file.name).join(", ");
-    const message = `下载成功: ${names || payload.filename || payload.download_dir || "已完成"}`;
-    els.downloadResultText.textContent = message;
-    showToast(message);
-  } catch (error) {
-    els.downloadResultText.textContent = error.message;
-    showToast(error.message);
-  } finally {
-    els.downloadButton.disabled = false;
-    els.downloadButton.textContent = "开始下载";
-  }
+["dragenter", "dragover"].forEach((eventName) => {
+  els.dropZone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    els.dropZone.classList.add("drag-over");
+  });
+});
+
+["dragleave", "dragend", "drop"].forEach((eventName) => {
+  els.dropZone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    if (eventName !== "drop") {
+      const relatedTarget = event.relatedTarget;
+      if (relatedTarget && els.dropZone.contains(relatedTarget)) return;
+    }
+    els.dropZone.classList.remove("drag-over");
+  });
+});
+
+els.dropZone.addEventListener("drop", async (event) => {
+  const files = event.dataTransfer?.files;
+  if (!files || !files.length) return;
+  const [file] = files;
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  els.fileInput.files = transfer.files;
+  syncSelectedFile(file);
+  await submitUpload();
 });
 
 els.refreshButton.addEventListener("click", () => {
   refreshAll().catch((error) => showToast(error.message));
+});
+
+els.refreshNowButton.addEventListener("click", () => {
+  forceRefreshPage();
+});
+
+els.mappingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const payload = await requestJson("/api/ip-users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ip: els.mappingIp.value.trim(),
+        user: els.mappingUser.value.trim(),
+      }),
+    });
+    els.mappingForm.reset();
+    renderMappings(payload.mappings || []);
+    renderUsers(payload.users || []);
+    await refreshFiles(els.searchInput.value.trim());
+    showToast("用户配置已保存");
+  } catch (error) {
+    showToast(error.message || "保存用户配置失败");
+  }
+});
+
+els.mappingList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-delete-mapping]");
+  if (!button) return;
+  const ip = button.getAttribute("data-delete-mapping");
+  if (!ip) return;
+
+  try {
+    const payload = await requestJson(`/api/ip-users/${encodeURIComponent(ip)}`, {
+      method: "DELETE",
+    });
+    renderMappings(payload.mappings || []);
+    renderUsers(payload.users || []);
+    await refreshFiles(els.searchInput.value.trim());
+    showToast("用户配置已删除");
+  } catch (error) {
+    showToast(error.message || "删除用户配置失败");
+  }
 });
 
 els.searchInput.addEventListener("input", () => {
@@ -216,16 +442,93 @@ els.searchButton.addEventListener("click", () => {
   refreshFiles(els.searchInput.value.trim()).catch((error) => showToast(error.message));
 });
 
-els.filesBody.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-copy]");
-  if (!button) return;
-  const value = button.getAttribute("data-copy");
-  if (!value) return;
+els.userFilter.addEventListener("change", () => {
+  refreshFiles(els.searchInput.value.trim()).catch((error) => showToast(error.message));
+});
+
+els.filesBody.addEventListener("change", async (event) => {
+  const input = event.target.closest("[data-remark-id]");
+  if (!input) return;
+  const uploadId = input.getAttribute("data-remark-id");
+  if (!uploadId) return;
+
   try {
-    await navigator.clipboard.writeText(value);
-    showToast("分享链接已复制");
-  } catch {
-    showToast("复制失败，请手动选择链接");
+    await requestJson(`/api/files/${encodeURIComponent(uploadId)}/remark`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remark: input.value.trim() }),
+    });
+    showToast("备注已保存");
+  } catch (error) {
+    showToast(error.message || "保存备注失败");
+  }
+});
+
+els.filesBody.addEventListener("click", async (event) => {
+  const renewToggle = event.target.closest("[data-renew-id]");
+  if (renewToggle) {
+    const uploadId = renewToggle.getAttribute("data-renew-id");
+    if (!uploadId) return;
+    const enabled = Boolean(renewToggle.checked);
+    renewToggle.disabled = true;
+    try {
+      await requestJson(`/api/auto-renew/${encodeURIComponent(uploadId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      showToast(enabled ? "自动续期已开启" : "自动续期已关闭");
+      await refreshFiles(els.searchInput.value.trim());
+    } catch (error) {
+      renewToggle.checked = !enabled;
+      showToast(error.message || "设置自动续期失败");
+    } finally {
+      renewToggle.disabled = false;
+    }
+    return;
+  }
+
+  const commandButton = event.target.closest("[data-command-id]");
+  if (commandButton) {
+    const uploadId = commandButton.getAttribute("data-command-id");
+    if (!uploadId) return;
+
+    const previousText = commandButton.textContent;
+    commandButton.disabled = true;
+    commandButton.textContent = "生成中";
+    try {
+      const payload = await requestJson(`/api/download-command/${encodeURIComponent(uploadId)}`);
+      const copied = await copyText(payload.command || "");
+      if (!copied) throw new Error("copy failed");
+      showToast("下载命令已复制");
+    } catch (error) {
+      showToast(error.message || "复制命令失败");
+    } finally {
+      commandButton.disabled = false;
+      commandButton.textContent = previousText;
+    }
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-delete-id]");
+  if (!deleteButton) return;
+  const uploadId = deleteButton.getAttribute("data-delete-id");
+  if (!uploadId) return;
+
+  const previousText = deleteButton.textContent;
+  deleteButton.disabled = true;
+  deleteButton.textContent = "删除中";
+  try {
+    await requestJson(`/api/files/${encodeURIComponent(uploadId)}`, {
+      method: "DELETE",
+    });
+    showToast("记录已删除");
+    await refreshFiles(els.searchInput.value.trim());
+  } catch (error) {
+    showToast(error.message || "删除记录失败");
+  } finally {
+    deleteButton.disabled = false;
+    deleteButton.textContent = previousText;
   }
 });
 

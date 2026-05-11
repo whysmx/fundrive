@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>文叔叔 Web 管理</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <title>文叔叔 Web 管理 v20260511e</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260511e" />
   </head>
   <body>
     <div class="app-shell">
@@ -21,16 +21,15 @@
 
       <main class="workspace">
         <section class="panel upload-panel" aria-labelledby="upload-title">
-          <div class="section-head">
+          <div class="section-head upload-head">
             <div>
               <h2 id="upload-title">上传文件</h2>
-              <p>匿名上传到文叔叔，完成后生成分享链接。</p>
             </div>
             <button class="ghost-button" id="refresh-button" type="button">刷新</button>
           </div>
 
           <form id="upload-form" class="upload-box">
-            <label class="file-picker" for="file-input">
+            <label class="file-picker" id="drop-zone" for="file-input">
               <span class="file-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" role="img" aria-label="">
                   <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"></path>
@@ -41,64 +40,56 @@
               </span>
               <span>
                 <strong id="file-label">选择文件</strong>
-                <small>支持单文件上传，文件会临时保存在文叔叔。</small>
+                <small id="drop-hint">支持单文件上传，也可以直接拖到这里。</small>
               </span>
             </label>
             <input id="file-input" name="file" type="file" data-testid="upload-input" />
-            <div class="field-row">
+            <div class="field-row upload-name-field">
               <label for="upload-name">显示文件名</label>
               <input id="upload-name" name="filename" type="text" placeholder="默认使用原文件名" />
             </div>
-            <button class="primary-button" id="upload-button" type="submit" data-testid="upload-button">开始上传</button>
-          </form>
-        </section>
-
-        <section class="panel metrics-panel" aria-labelledby="storage-title" data-testid="storage-panel">
-          <div class="section-head compact">
-            <div>
-              <h2 id="storage-title">空间信息</h2>
-              <p>来自匿名账号的实时配额。</p>
+            <div class="field-row upload-remark-field">
+              <label for="upload-remark">备注</label>
+              <input id="upload-remark" name="remark" type="text" placeholder="可选" />
             </div>
-          </div>
-          <div class="metric-grid">
-            <div class="metric">
-              <span>已用</span>
-              <strong id="used-space">-- GB</strong>
-            </div>
-            <div class="metric">
-              <span>剩余</span>
-              <strong id="free-space">-- GB</strong>
-            </div>
-            <div class="metric">
-              <span>总计</span>
-              <strong id="total-space">-- GB</strong>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel download-panel" aria-labelledby="download-title" data-testid="download-result">
-          <div class="section-head compact">
-            <div>
-              <h2 id="download-title">下载分享</h2>
-              <p>输入文叔叔分享链接，文件保存到本机下载目录。</p>
-            </div>
-          </div>
-          <form id="download-form" class="form-stack">
-            <div class="field-row">
-              <label for="share-url">分享链接</label>
-              <input id="share-url" name="share_url" type="url" placeholder="https://www.wenshushu.cn/f/..." required data-testid="download-url-input" />
-            </div>
-            <div class="field-row">
-              <label for="download-name">保存文件名</label>
-              <input id="download-name" name="filename" type="text" placeholder="可选，默认使用远端文件名" />
-            </div>
-            <label class="check-row">
-              <input id="overwrite" type="checkbox" />
-              <span>允许覆盖同名文件</span>
+            <label class="check-row auto-renew-row">
+              <input id="auto-renew" name="auto_renew" type="checkbox" />
+              <span>自动续期</span>
             </label>
-            <button class="secondary-button" id="download-button" type="submit" data-testid="download-button">开始下载</button>
-            <p class="result-line" id="download-result-text">等待下载任务</p>
+            <button class="primary-button" id="upload-button" type="submit" data-testid="upload-button">开始上传</button>
+            <div class="upload-progress" id="upload-progress" hidden>
+              <div class="upload-progress-meta">
+                <span id="upload-progress-text">准备上传</span>
+                <span id="upload-progress-value">0%</span>
+              </div>
+              <div class="progress-track" aria-hidden="true">
+                <div class="progress-bar" id="upload-progress-bar"></div>
+              </div>
+              <div class="upload-progress-actions" id="upload-progress-actions" hidden>
+                <button class="ghost-button" id="refresh-now-button" type="button">立即刷新</button>
+              </div>
+            </div>
           </form>
+        </section>
+
+        <section class="panel mapping-panel" aria-labelledby="mapping-title">
+          <div class="section-head mapping-head">
+            <div>
+              <h2 id="mapping-title">用户配置</h2>
+            </div>
+          </div>
+          <form id="mapping-form" class="mapping-form">
+            <div class="field-row">
+              <label for="mapping-ip">IP</label>
+              <input id="mapping-ip" type="text" placeholder="例如 192.168.1.20" />
+            </div>
+            <div class="field-row">
+              <label for="mapping-user">用户</label>
+              <input id="mapping-user" type="text" placeholder="例如 张三" />
+            </div>
+            <button class="secondary-button" id="mapping-save-button" type="submit">保存</button>
+          </form>
+          <div class="mapping-list" id="mapping-list" data-testid="mapping-list"></div>
         </section>
 
         <section class="panel records-panel" aria-labelledby="records-title" data-testid="file-list">
@@ -108,6 +99,10 @@
               <p>记录保存在本机 SQLite，便于后续复制分享链接。</p>
             </div>
             <div class="search-box">
+              <label class="sr-only" for="user-filter">用户筛选</label>
+              <select id="user-filter" data-testid="user-filter">
+                <option value="">全部用户</option>
+              </select>
               <label class="sr-only" for="search-input">搜索文件</label>
               <input id="search-input" type="search" placeholder="搜索文件名或链接" data-testid="search-input" />
               <button class="ghost-button search-button" id="search-button" type="button" data-testid="search-button">搜索</button>
@@ -120,14 +115,18 @@
                 <tr>
                   <th>文件名</th>
                   <th>大小</th>
+                  <th>用户</th>
+                  <th>上传IP</th>
                   <th>上传时间</th>
+                  <th>备注</th>
+                  <th>自动续期</th>
                   <th>分享链接</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody id="files-body" data-testid="upload-records">
                 <tr>
-                  <td colspan="5" class="empty-cell">暂无记录</td>
+                  <td colspan="9" class="empty-cell">暂无记录</td>
                 </tr>
               </tbody>
             </table>
@@ -138,6 +137,6 @@
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </div>
 
-    <script src="/static/app.js" defer></script>
+    <script src="/static/app.js?v=20260511e" defer></script>
   </body>
 </html>

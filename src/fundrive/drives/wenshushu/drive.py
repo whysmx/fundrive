@@ -41,6 +41,11 @@ from fundrive.core.utils import handle_drive_errors, log_storage_info, validate_
 
 logger = getLogger("fundrive")
 
+WENSHUSHU_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
 
 class WSSDrive(BaseDrive):
     """
@@ -62,6 +67,7 @@ class WSSDrive(BaseDrive):
         self.base_url = "https://www.wenshushu.cn"
         self.session = None
         self.token = None
+        self.last_error = ""
 
         # 文件存储信息
         self.uploaded_files = {}  # 存储已上传文件的信息
@@ -100,9 +106,11 @@ class WSSDrive(BaseDrive):
             self.session.headers.update(
                 {
                     "X-TOKEN": self.token,
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:82.0) Gecko/20100101 Firefox/82.0",
-                    "Accept-Language": "en-US, en;q=0.9",
+                    "User-Agent": WENSHUSHU_USER_AGENT,
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "zh-CN, en-um;q=0.9",
                     "Content-Type": "application/json",
+                    "Prod": "com.wenshushu.web.pc",
                 }
             )
 
@@ -428,10 +436,12 @@ class WSSDrive(BaseDrive):
             上传是否成功
         """
         try:
+            self.last_error = ""
             logger.info(f"正在上传文件: {filepath}")
 
             if not os.path.exists(filepath):
-                logger.error(f"文件不存在: {filepath}")
+                self.last_error = f"文件不存在: {filepath}"
+                logger.error(self.last_error)
                 return False
 
             # 创建内部驱动实例用于上传
@@ -464,10 +474,12 @@ class WSSDrive(BaseDrive):
                 logger.info(f"✅ 文件上传成功: {filepath}")
                 return True
             else:
-                logger.error(f"❌ 文件上传失败: {filepath}")
+                self.last_error = getattr(uploader, "last_error", "") or f"文件上传失败: {filepath}"
+                logger.error(f"❌ {self.last_error}")
                 return False
 
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"上传文件失败: {e}")
             return False
 
@@ -620,9 +632,12 @@ class _WSSBaseDrive:
         )
         self.session.headers["X-TOKEN"] = r.json()["data"]["token"]
         self.session.headers["User-Agent"] = (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:82.0) Gecko/20100101 Firefox/82.0"
+            WENSHUSHU_USER_AGENT
         )
-        self.session.headers["Accept-Language"] = "en-US, en;q=0.9"
+        self.session.headers["Accept"] = "application/json, text/plain, */*"
+        self.session.headers["Accept-Language"] = "zh-CN, en-um;q=0.9"
+        self.session.headers["Content-Type"] = "application/json;charset=UTF-8"
+        self.session.headers["Prod"] = "com.wenshushu.web.pc"
 
     def storage(self):
         r = self.session.post(url="https://www.wenshushu.cn/ap/user/storage", json={})
@@ -654,6 +669,7 @@ class Uploader:
         self.file_path = file_path
         self.file_size = os.path.getsize(file_path)
         self.is_part = True if self.file_size > self.chunk_size else False
+        self.last_error = ""
 
     def get_epoch_time(self):
         r = self.session.get(
@@ -734,16 +750,18 @@ class Uploader:
             "sender": "",
             "remark": "",
             "isextension": False,
-            "notSaveTo": False,
-            "notDownload": False,
-            "notPreview": False,
-            "downPreCountLimit": 0,
-            "trafficStatus": 0,
             "pwd": "",
             "expire": "1",
             "recvs": ["social", "public"],
             "file_size": self.file_size,
             "file_count": 1,
+            "notSaveTo": False,
+            "trafficStatus": 0,
+            "task_traffic_limit": "",
+            "downPreCountLimit": 0,
+            "notDownload": False,
+            "notPreview": False,
+            "fileDisplay": 0,
         }
         # POST的内容在服务端会以字串形式接受然后直接拼接X-TOKEN，不会先反序列化JSON字串再拼接
         # 加密函数中的JSON序列化与此处的JSON序列化的字串形式两者必须完全一致，否则校验失败
@@ -763,6 +781,11 @@ class Uploader:
         rsp = r.json()
         if rsp["code"] == 1021:
             raise Exception(f"操作太快啦！请{rsp['message']}秒后重试")
+        if rsp.get("code") != 0 or not rsp.get("data"):
+            raise Exception(
+                f"创建上传任务失败: {rsp.get('message', '未知错误')} "
+                f"(code={rsp.get('code')})"
+            )
 
         data = rsp["data"]
         logger.info(f"data: {data}")
@@ -809,7 +832,7 @@ class Uploader:
         cipherText = cipher.encrypt(
             Padding.pad(base58_hash_code, DES.block_size, style="pkcs7")
         )
-        return base64.b64encode(cipherText)
+        return base64.b64encode(cipherText).decode("utf-8")
 
     def read_file(self):
         part_num = 0
@@ -860,6 +883,7 @@ class Uploader:
 
     def upload(self, max_workers=os.cpu_count()):
         try:
+            self.last_error = ""
             fname, tid, boxid, preid, upId = self.fast()
             pbar = tqdm(
                 desc=f"{max_workers}%{fname}",
@@ -907,6 +931,7 @@ class Uploader:
             return True
 
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"上传失败: {e}")
             return False
 

@@ -15,6 +15,7 @@ uv.lock
 fundrive.zip
 web/data/*.db
 web/data/*.db-*
+web/data/*.log
 web/data/downloads/
 web/temp/
 temp/
