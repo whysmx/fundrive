@@ -6,10 +6,10 @@
 
 - `/api/status`: 页面状态展示
 - `/api/files`: 上传记录和分享链接展示
-- `/api/upload`: 选择文件后上传并追加记录
+- `/api/upload`: 选择文件后自动上传并追加记录
 - `/api/search`: 按关键词搜索上传记录
-- `/api/ip-users`: 配置 IP 对应用户，并维护用户下拉筛选
-- `/api/files/{id}/remark`: 保存上传记录备注
+- `/api/ip-users`: 在上传记录用户列配置 IP 对应用户，并维护用户下拉筛选
+- `/api/files/{id}/remark`: 在上传记录里保存备注
 
 测试默认 mock 后端 API，所以只需要本地 Web 页面能打开即可。
 
@@ -21,10 +21,10 @@
 | --- | --- |
 | 状态标签 | `status-badge` |
 | 文件上传 input | `upload-input` |
-| 上传按钮 | `upload-button` |
+| 取消上传按钮 | `cancel-upload-button` |
 | 上传记录/文件列表 | `file-list` 或 `upload-records` |
 | 用户筛选 | `user-filter` |
-| IP 用户映射列表 | `mapping-list` |
+| 用户名称输入框 | `data-user-ip` |
 | 搜索输入框 | `search-input` |
 | 搜索按钮 | `search-button` |
 | 搜索结果区域 | `search-results` |

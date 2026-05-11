@@ -2,6 +2,8 @@ const state = {
   files: [],
   toastTimer: null,
   uploadProgressTimer: null,
+  uploadXhr: null,
+  uploading: false,
 };
 
 const els = {
@@ -12,21 +14,12 @@ const els = {
   fileInput: document.querySelector("#file-input"),
   fileLabel: document.querySelector("#file-label"),
   dropHint: document.querySelector("#drop-hint"),
-  uploadName: document.querySelector("#upload-name"),
-  uploadRemark: document.querySelector("#upload-remark"),
-  autoRenew: document.querySelector("#auto-renew"),
   uploadProgress: document.querySelector("#upload-progress"),
   uploadProgressText: document.querySelector("#upload-progress-text"),
   uploadProgressValue: document.querySelector("#upload-progress-value"),
   uploadProgressBar: document.querySelector("#upload-progress-bar"),
-  uploadProgressActions: document.querySelector("#upload-progress-actions"),
-  uploadButton: document.querySelector("#upload-button"),
+  cancelUploadButton: document.querySelector("#cancel-upload-button"),
   refreshButton: document.querySelector("#refresh-button"),
-  refreshNowButton: document.querySelector("#refresh-now-button"),
-  mappingForm: document.querySelector("#mapping-form"),
-  mappingIp: document.querySelector("#mapping-ip"),
-  mappingUser: document.querySelector("#mapping-user"),
-  mappingList: document.querySelector("#mapping-list"),
   userFilter: document.querySelector("#user-filter"),
   searchInput: document.querySelector("#search-input"),
   searchButton: document.querySelector("#search-button"),
@@ -106,7 +99,6 @@ function resetUploadProgress() {
   els.uploadProgressBar.style.width = "0%";
   els.uploadProgressValue.textContent = "0%";
   els.uploadProgressText.textContent = "准备上传";
-  els.uploadProgressActions.hidden = true;
 }
 
 function getSelectedFile() {
@@ -118,9 +110,6 @@ function syncSelectedFile(file) {
   els.dropHint.textContent = file
     ? "拖拽或点击可重新选择文件。"
     : "支持单文件上传，也可以直接拖到这里。";
-  if (file && !els.uploadName.value.trim()) {
-    els.uploadName.value = file.name;
-  }
 }
 
 function forceRefreshPage() {
@@ -132,6 +121,7 @@ function forceRefreshPage() {
 function uploadWithProgress(url, formData) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    state.uploadXhr = xhr;
     xhr.open("POST", url, true);
 
     xhr.upload.addEventListener("progress", (event) => {
@@ -145,6 +135,7 @@ function uploadWithProgress(url, formData) {
 
     xhr.addEventListener("load", () => {
       stopUploadProgressTimer();
+      state.uploadXhr = null;
       let payload = {};
       try {
         payload = JSON.parse(xhr.responseText || "{}");
@@ -160,10 +151,12 @@ function uploadWithProgress(url, formData) {
 
     xhr.addEventListener("error", () => {
       stopUploadProgressTimer();
+      state.uploadXhr = null;
       reject(new Error("上传请求失败"));
     });
     xhr.addEventListener("abort", () => {
       stopUploadProgressTimer();
+      state.uploadXhr = null;
       reject(new Error("上传已取消"));
     });
     xhr.send(formData);
@@ -180,6 +173,9 @@ function renderFiles(files) {
   els.filesBody.innerHTML = files
     .map((file) => {
       const fileId = file.id || file.fid || "";
+      const uploaderIp = file.uploader_ip || "";
+      const userName = file.user && file.user !== uploaderIp ? file.user : "";
+      const userDisplay = userName ? `${userName}(${uploaderIp})` : uploaderIp || "-";
       const shareUrl = file.share_url || "";
       const link = shareUrl
         ? `<a class="url-text" href="${escapeHtml(shareUrl)}" target="_blank" rel="noreferrer">${escapeHtml(shareUrl)}</a>`
@@ -191,7 +187,12 @@ function renderFiles(files) {
         <tr>
           <td>${escapeHtml(file.name || "-")}</td>
           <td>${formatSize(file.size)}</td>
-          <td>${escapeHtml(file.user || "-")}</td>
+          <td>
+            <div class="user-editor">
+              <input class="user-name-input" type="text" data-user-ip="${escapeHtml(uploaderIp)}" value="${escapeHtml(userName)}" placeholder="添加名称" ${uploaderIp ? "" : "disabled"}>
+              <span class="muted-text">${escapeHtml(userDisplay)}</span>
+            </div>
+          </td>
           <td>${escapeHtml(file.uploader_ip || "-")}</td>
           <td>${escapeHtml(file.upload_time || "-")}</td>
           <td>
@@ -224,25 +225,8 @@ function renderUsers(users = []) {
   }
 }
 
-function renderMappings(mappings = []) {
-  if (!mappings.length) {
-    els.mappingList.innerHTML = '<span class="muted-text">未配置 IP 对应用户</span>';
-    return;
-  }
-
-  els.mappingList.innerHTML = mappings
-    .map((item) => `
-      <span class="mapping-chip">
-        <span>${escapeHtml(item.ip)} = ${escapeHtml(item.user)}</span>
-        <button type="button" data-delete-mapping="${escapeHtml(item.ip)}" aria-label="删除 ${escapeHtml(item.ip)}">×</button>
-      </span>
-    `)
-    .join("");
-}
-
 async function refreshMappings() {
   const payload = await requestJson("/api/ip-users");
-  renderMappings(payload.mappings || []);
   renderUsers(payload.users || []);
 }
 
@@ -311,10 +295,19 @@ async function refreshAll() {
 }
 
 els.fileInput.addEventListener("change", () => {
-  syncSelectedFile(getSelectedFile());
+  const file = getSelectedFile();
+  syncSelectedFile(file);
+  if (file) {
+    submitUpload();
+  }
 });
 
 async function submitUpload() {
+  if (state.uploading) {
+    showToast("已有上传任务正在进行");
+    return;
+  }
+
   const file = getSelectedFile();
   if (!file) {
     showToast("请选择要上传的文件");
@@ -323,17 +316,14 @@ async function submitUpload() {
 
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("filename", els.uploadName.value.trim() || file.name);
-  formData.append("remark", els.uploadRemark.value.trim());
-  formData.append("auto_renew", els.autoRenew.checked ? "true" : "false");
+  formData.append("auto_renew", "true");
 
-  els.uploadButton.disabled = true;
-  els.uploadButton.textContent = "上传中";
+  state.uploading = true;
+  els.cancelUploadButton.hidden = false;
   setUploadProgress(0, "正在上传到本地服务");
   try {
     const payload = await uploadWithProgress("/api/upload", formData);
     setUploadProgress(100, "分享链接已生成");
-    els.uploadProgressActions.hidden = false;
     showToast(`上传完成: ${payload.file.name}`);
     els.uploadForm.reset();
     syncSelectedFile(null);
@@ -343,8 +333,9 @@ async function submitUpload() {
   } catch (error) {
     showToast(error.message);
   } finally {
-    els.uploadButton.disabled = false;
-    els.uploadButton.textContent = "开始上传";
+    state.uploading = false;
+    state.uploadXhr = null;
+    els.cancelUploadButton.hidden = true;
     window.setTimeout(resetUploadProgress, 1200);
   }
 }
@@ -387,47 +378,9 @@ els.refreshButton.addEventListener("click", () => {
   refreshAll().catch((error) => showToast(error.message));
 });
 
-els.refreshNowButton.addEventListener("click", () => {
-  forceRefreshPage();
-});
-
-els.mappingForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try {
-    const payload = await requestJson("/api/ip-users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ip: els.mappingIp.value.trim(),
-        user: els.mappingUser.value.trim(),
-      }),
-    });
-    els.mappingForm.reset();
-    renderMappings(payload.mappings || []);
-    renderUsers(payload.users || []);
-    await refreshFiles(els.searchInput.value.trim());
-    showToast("用户配置已保存");
-  } catch (error) {
-    showToast(error.message || "保存用户配置失败");
-  }
-});
-
-els.mappingList.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-delete-mapping]");
-  if (!button) return;
-  const ip = button.getAttribute("data-delete-mapping");
-  if (!ip) return;
-
-  try {
-    const payload = await requestJson(`/api/ip-users/${encodeURIComponent(ip)}`, {
-      method: "DELETE",
-    });
-    renderMappings(payload.mappings || []);
-    renderUsers(payload.users || []);
-    await refreshFiles(els.searchInput.value.trim());
-    showToast("用户配置已删除");
-  } catch (error) {
-    showToast(error.message || "删除用户配置失败");
+els.cancelUploadButton.addEventListener("click", () => {
+  if (state.uploadXhr) {
+    state.uploadXhr.abort();
   }
 });
 
@@ -447,6 +400,26 @@ els.userFilter.addEventListener("change", () => {
 });
 
 els.filesBody.addEventListener("change", async (event) => {
+  const userInput = event.target.closest("[data-user-ip]");
+  if (userInput) {
+    const ip = userInput.getAttribute("data-user-ip");
+    if (!ip) return;
+    const user = userInput.value.trim();
+
+    try {
+      await requestJson("/api/ip-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip, user }),
+      });
+      await refreshFiles(els.searchInput.value.trim());
+      showToast("用户名称已保存");
+    } catch (error) {
+      showToast(error.message || "保存用户名称失败");
+    }
+    return;
+  }
+
   const input = event.target.closest("[data-remark-id]");
   if (!input) return;
   const uploadId = input.getAttribute("data-remark-id");
@@ -514,6 +487,12 @@ els.filesBody.addEventListener("click", async (event) => {
   if (!deleteButton) return;
   const uploadId = deleteButton.getAttribute("data-delete-id");
   if (!uploadId) return;
+
+  const file = state.files.find((item) => (item.id || item.fid || "") === uploadId);
+  const name = file?.name ? `「${file.name}」` : "这条上传记录";
+  if (!window.confirm(`确认删除${name}吗？\n删除后只会移除本机记录。`)) {
+    return;
+  }
 
   const previousText = deleteButton.textContent;
   deleteButton.disabled = true;

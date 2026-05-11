@@ -25,6 +25,18 @@ const mockFiles = [
     share_url: 'https://www.wenshushu.cn/f/abc123demo2',
     mgr_url: 'https://www.wenshushu.cn/mgr/abc123demo2',
   },
+  {
+    id: 'upload_004',
+    fid: 'upload_004',
+    name: '接口日志.txt',
+    size: 12_288,
+    uploader_ip: '192.168.1.21',
+    user: '李四',
+    remark: '',
+    upload_time: '2026-05-11 09:25:00',
+    share_url: 'https://www.wenshushu.cn/f/abc123demo4',
+    mgr_url: 'https://www.wenshushu.cn/mgr/abc123demo4',
+  },
 ];
 
 const uploadedFile = {
@@ -52,18 +64,22 @@ test('renders status and uploaded file records from mocked APIs', async ({ page 
 
   await expect(control(page, 'status-badge', /在线|已连接|正常|可用/)).toBeVisible();
 
-  const fileList = control(page, 'file-list', /上传记录|文件列表|历史/);
+  const fileList = page.getByTestId('file-list');
   await expect(fileList).toContainText('产品说明.pdf');
-  await expect(fileList).toContainText('张三');
+  await expect(fileList).toContainText('张三(192.168.1.20)');
   await expect(fileList).toContainText('192.168.1.20');
   await expect(page.locator('[data-remark-id="upload_001"]')).toHaveValue('发给客户确认');
   await expect(fileList).toContainText('接口截图.png');
   await expect(fileList).toContainText('https://www.wenshushu.cn/f/abc123demo1');
 });
 
-test('uploads a selected file and appends the returned share link', async ({ page }) => {
+test('uploads immediately after selecting a file and appends the returned share link', async ({ page }) => {
   await page.goto('/');
 
+  await expect(page.locator('#auto-renew')).toHaveCount(0);
+  await expect(page.getByTestId('cancel-upload-button')).toBeHidden();
+
+  const uploadRequest = page.waitForRequest(request => request.url().includes('/api/upload') && request.method() === 'POST');
   const fileInput = page.getByTestId('upload-input').or(page.locator('input[type="file"]')).first();
   await fileInput.setInputFiles({
     name: '测试上传.txt',
@@ -71,10 +87,34 @@ test('uploads a selected file and appends the returned share link', async ({ pag
     buffer: Buffer.from('hello upload'),
   });
 
-  await page.getByTestId('upload-button').click();
+  const request = await uploadRequest;
+  const body = request.postData() || '';
+  expect(body).toContain('name="auto_renew"');
+  expect(body).toContain('true');
+  expect(body).not.toContain('name="filename"');
+  expect(body).not.toContain('name="remark"');
 
   await expect(page.getByTestId('upload-records')).toContainText('测试上传.txt');
   await expect(page.getByText('https://www.wenshushu.cn/f/uploaded001')).toBeVisible();
+});
+
+test('can cancel an in-progress upload', async ({ page }) => {
+  await page.unroute('**/api/upload**');
+  await page.route('**/api/upload**', async () => {});
+  await page.goto('/');
+
+  const fileInput = page.getByTestId('upload-input').or(page.locator('input[type="file"]')).first();
+  await fileInput.setInputFiles({
+    name: '取消上传.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('cancel upload'),
+  });
+
+  const cancelButton = page.getByTestId('cancel-upload-button');
+  await expect(cancelButton).toBeVisible();
+  await cancelButton.click();
+  await expect(cancelButton).toBeHidden();
+  await expect(page.getByTestId('upload-records')).not.toContainText('取消上传.txt');
 });
 
 test('searches uploaded records', async ({ page }) => {
@@ -105,22 +145,29 @@ test('shows users in the records table and filters records by selected user', as
   await expect(results).not.toContainText('张三');
 });
 
-test('saves and deletes IP to user mappings', async ({ page }) => {
+test('edits user names in the records table and applies them to the same IP', async ({ page }) => {
   await page.goto('/');
 
-  const mappingList = page.getByTestId('mapping-list');
-  await expect(mappingList).toContainText('192.168.1.20 = 张三');
+  await expect(page.locator('#mapping-form')).toHaveCount(0);
+  await expect(page.getByTestId('file-list')).toContainText('李四(192.168.1.21)');
 
-  await page.locator('#mapping-ip').fill('192.168.1.23');
-  await page.locator('#mapping-user').fill('赵六');
-  await page.locator('#mapping-save-button').click();
+  const mappingRequest = page.waitForRequest(
+    request => request.url().endsWith('/api/ip-users') && request.method() === 'POST',
+  );
+  const userInput = page.locator('[data-user-ip="192.168.1.21"]').first();
+  await userInput.fill('王工');
+  await userInput.dispatchEvent('change');
 
-  await expect(mappingList).toContainText('192.168.1.23 = 赵六');
-  await expect(page.getByTestId('user-filter')).toContainText('赵六');
+  const request = await mappingRequest;
+  expect(JSON.parse(request.postData() || '{}')).toEqual({ ip: '192.168.1.21', user: '王工' });
 
-  await mappingList.getByRole('button', { name: '删除 192.168.1.23' }).click();
-
-  await expect(mappingList).not.toContainText('192.168.1.23 = 赵六');
+  const results = page.getByTestId('search-results');
+  await expect(results).toContainText('王工(192.168.1.21)');
+  const updatedInputs = results.locator('[data-user-ip="192.168.1.21"]');
+  await expect(updatedInputs).toHaveCount(2);
+  await expect(updatedInputs.nth(0)).toHaveValue('王工');
+  await expect(updatedInputs.nth(1)).toHaveValue('王工');
+  await expect(page.getByTestId('user-filter')).toContainText('王工');
 });
 
 test('saves an edited remark for an uploaded record', async ({ page }) => {
@@ -148,6 +195,33 @@ test('copies an overwrite download command for an uploaded record', async ({ pag
   await expect
     .poll(() => page.evaluate(() => window.localStorage.getItem('__copiedText')))
     .toContain('rm -f "/home/forlinx/产品说明.pdf" && wget -O "/home/forlinx/产品说明.pdf"');
+});
+
+test('confirms before deleting an uploaded record', async ({ page }) => {
+  await page.goto('/');
+
+  let deleteRequests = 0;
+  page.on('dialog', async dialog => {
+    expect(dialog.message()).toContain('确认删除');
+    await dialog.dismiss();
+  });
+
+  await page.route('**/api/files/upload_001', async route => {
+    if (route.request().method() === 'DELETE') {
+      deleteRequests += 1;
+    }
+    await route.fallback();
+  });
+
+  const results = page.getByTestId('search-results');
+  await results.getByRole('button', { name: '删除记录' }).first().click();
+  await expect(results).toContainText('产品说明.pdf');
+  expect(deleteRequests).toBe(0);
+
+  page.removeAllListeners('dialog');
+  page.on('dialog', dialog => dialog.accept());
+  await results.getByRole('button', { name: '删除记录' }).first().click();
+  await expect(results).not.toContainText('产品说明.pdf');
 });
 
 async function mockBackendApis(page: Page) {
@@ -220,9 +294,7 @@ async function mockBackendApis(page: Page) {
       const mapping = { ip: String(body.ip || ''), user: String(body.user || '') };
       mappings = [...mappings.filter(item => item.ip !== mapping.ip), mapping];
       files = files.map(file =>
-        file.uploader_ip === mapping.ip && (!file.user || file.user === file.uploader_ip)
-          ? { ...file, user: mapping.user }
-          : file,
+        file.uploader_ip === mapping.ip ? { ...file, user: mapping.user } : file,
       );
       await route.fulfill({
         status: 200,
@@ -265,6 +337,21 @@ async function mockBackendApis(page: Page) {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ ok: true, file: updatedFile }),
+    });
+  });
+
+  await page.route('**/api/files/*', async route => {
+    if (route.request().method() !== 'DELETE') {
+      await route.fallback();
+      return;
+    }
+
+    const uploadId = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop() || '');
+    files = files.filter(file => file.id !== uploadId && file.fid !== uploadId);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true, files, users: listUsers(files, mappings) }),
     });
   });
 

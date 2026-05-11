@@ -702,7 +702,7 @@ async def upload(
     request: Request,
     file: UploadFile = File(...),
     filename: str | None = Form(default=None),
-    auto_renew: bool = Form(default=False),
+    auto_renew: bool = Form(default=True),
     remark: str | None = Form(default=""),
 ) -> dict[str, Any]:
     safe_name = _safe_filename(filename or file.filename, "upload.bin")
